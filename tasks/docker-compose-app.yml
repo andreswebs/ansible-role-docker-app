@@ -13,7 +13,7 @@
 # copy files/docker-compose-app.service to /etc/systemd/system/docker-compose-app.service
 - name: Install app service
   copy:
-    src: files/docker-compose-app.service
+    src: docker-compose-app.service
     dest: /etc/systemd/system/docker-compose-app.service
     owner: root
     group: root
