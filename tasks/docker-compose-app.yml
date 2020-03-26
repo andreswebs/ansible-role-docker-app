@@ -1,0 +1,30 @@
+---
+# copy files/docker-compose.yml to /srv/docker
+- name: Install docker-compose.yml
+  copy:
+    src: files/docker-compose.yml
+    dest: /srv/docker/
+    owner: root
+    group: root
+    mode: "0400"
+  tags:
+    - docker-compose-app
+
+# copy files/docker-compose-app.service to /etc/systemd/system/docker-compose-app.service
+- name: Install app service
+  copy:
+    src: files/docker-compose-app.service
+    dest: /etc/systemd/system/docker-compose-app.service
+    owner: root
+    group: root
+    mode: "0400"
+  tags:
+    - docker-compose-app
+
+- name: Enable and start app service
+  service:
+    name: docker-compose-app.service
+    enabled: yes
+    state: started
+  tags:
+    - docker-compose-app
