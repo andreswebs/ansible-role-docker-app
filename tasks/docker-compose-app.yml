@@ -1,7 +1,7 @@
 ---
 - name: Install app
   copy:
-    src: files/docker-compose-app
+    src: files/docker-compose-app/
     dest: "{{ app_dir }}"
     owner: root
     group: root
@@ -11,7 +11,7 @@
 - name: Link app
   file:
     src: "{{ app_dir }}"
-    path: "/srv/docker"
+    dest: /srv/docker
     owner: root
     group: root
     mode: "0500"
