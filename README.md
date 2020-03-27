@@ -4,7 +4,7 @@ Installs a docker-compose app as a systemd service.
 
 ## role variables
 
-None
+app_dir
 
 ## license
 

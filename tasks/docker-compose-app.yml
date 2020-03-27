@@ -1,12 +1,18 @@
 ---
-# copy files/docker-compose.yml to /srv/docker
-- name: Install docker-compose.yml
+- name: Install app
   copy:
-    src: files/docker-compose.yml
-    dest: /srv/docker/
+    src: files/docker-compose-app
+    dest: "{{ app_dir }}"
     owner: root
     group: root
-    mode: "0400"
+  tags:
+    - docker-compose-app
+
+- name: Link app
+  file:
+    src: "{{ app_dir }}"
+    dest: "/srv/docker"
+    state: link
   tags:
     - docker-compose-app
 
