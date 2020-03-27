@@ -11,7 +11,10 @@
 - name: Link app
   file:
     src: "{{ app_dir }}"
-    dest: "/srv/docker"
+    path: "/srv/docker"
+    owner: root
+    group: root
+    mode: "0500"
     state: link
   tags:
     - docker-compose-app
