@@ -1,2 +1,2 @@
 ---
-- import_tasks: docker-compose-app.yml
+- ansible.builtin.import_tasks: app.yml

@@ -1,0 +1,82 @@
+---
+- name: "Create {{ app_name }} group"
+  ansible.builtin.group:
+    state: present
+    gid: "{{ app_gid }}"
+    name: "{{ app_name }}"
+  tags:
+    - app
+    - app-user
+
+- name: "Create {{ app_name }} user"
+  ansible.builtin.user:
+    state: present
+    uid: "{{ app_uid }}"
+    name: "{{ app_name }}"
+    group: "{{ app_name }}"
+    groups: docker
+    append: yes
+    create_home: no
+    home: "{{ app_home }}"
+    shell: /sbin/nologin
+    password: "*"
+  tags:
+    - app
+    - app-user
+
+- name: "Create {{ app_home }}"
+  ansible.builtin.file:
+    state: directory
+    owner: "{{ app_name }}"
+    group: "{{ app_name }}"
+    dest: "{{ app_home }}"
+    mode: "0750"
+    recurse: yes
+  tags:
+    - app
+    - app-user
+
+- name: "Ensure {{ app_dest }}"
+  ansible.builtin.file:
+    state: directory
+    owner: "{{ app_name }}"
+    group: "{{ app_name }}"
+    dest: "{{ app_dest }}"
+    mode: "0750"
+    recurse: yes
+  tags:
+    - app
+    - app-user
+
+- name: "Install {{ app_name }} to {{ app_dest }}"
+  ansible.builtin.copy:
+    src: "{{ app_src }}"
+    dest: "{{ app_dest }}"
+    owner: "{{ app_name }}"
+    group: "{{ app_name }}"
+    mode: "0750"
+  tags:
+    - app
+    - app-install
+
+- name: "Install {{ app_name }} service"
+  ansible.builtin.template:
+    src: docker-app.service.j2
+    dest: "/lib/systemd/system/{{ app_name }}.service"
+    owner: root
+    group: root
+    mode: "0600"
+  tags:
+    - app
+    - app-install
+    - app-service
+
+- name: "Start and enable {{ app_name }} service"
+  ansible.builtin.service:
+    name: "{{ app_name }}.service"
+    state: started
+    enabled: yes
+  tags:
+    - app
+    - app-install
+    - app-service

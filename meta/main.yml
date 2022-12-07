@@ -1,2 +1,25 @@
 ---
-dependencies: []
+galaxy_info:
+  author: Andre Silva
+  description: Installs a Docker application
+  role_name: docker_app
+  
+  license: Unlicense
+
+  min_ansible_version: 2.9
+
+  github_branch: main
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+
+  galaxy_tags:
+    - docker
+
+dependencies:
+  - andreswebs.docker
