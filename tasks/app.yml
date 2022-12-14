@@ -55,6 +55,8 @@
     owner: "{{ app_name }}"
     group: "{{ app_name }}"
     mode: "0750"
+  notify:
+    - restart app
   tags:
     - app
     - app-install
