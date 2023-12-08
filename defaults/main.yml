@@ -1,6 +1,6 @@
 ---
 app_name: docker-app
 app_home: "/var/lib/{{ app_name }}"
-app_dest: /opt/docker-app
+app_dest: "/opt/{{ app_name }}"
 app_uid: 2000
 app_gid: 2000
