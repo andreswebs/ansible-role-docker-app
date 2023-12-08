@@ -3,7 +3,7 @@
   ansible.builtin.group:
     state: present
     gid: "{{ app_gid }}"
-    name: "{{ app_name }}"
+    name: "{{ app_group }}"
   tags:
     - app
     - app-user
@@ -12,13 +12,13 @@
   ansible.builtin.user:
     state: present
     uid: "{{ app_uid }}"
-    name: "{{ app_name }}"
-    group: "{{ app_name }}"
+    name: "{{ app_user }}"
+    group: "{{ app_group }}"
     groups: docker
     append: yes
     create_home: no
     home: "{{ app_home }}"
-    shell: /sbin/nologin
+    shell: "{{ app_user_shell }}"
     password: "*"
   tags:
     - app
@@ -27,8 +27,8 @@
 - name: "Create {{ app_home }}"
   ansible.builtin.file:
     state: directory
-    owner: "{{ app_name }}"
-    group: "{{ app_name }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
     dest: "{{ app_home }}"
     mode: "0750"
     recurse: yes
@@ -39,8 +39,8 @@
 - name: "Ensure {{ app_dest }}"
   ansible.builtin.file:
     state: directory
-    owner: "{{ app_name }}"
-    group: "{{ app_name }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
     dest: "{{ app_dest }}"
     mode: "0750"
     recurse: yes
@@ -52,8 +52,8 @@
   ansible.builtin.copy:
     src: "{{ app_src }}"
     dest: "{{ app_dest }}"
-    owner: "{{ app_name }}"
-    group: "{{ app_name }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
     mode: "0750"
   notify:
     - restart app
@@ -64,7 +64,7 @@
 - name: "Install {{ app_name }} service"
   ansible.builtin.template:
     src: docker-app.service.j2
-    dest: "/lib/systemd/system/{{ app_name }}.service"
+    dest: "/etc/systemd/system/{{ app_name }}.service"
     owner: root
     group: root
     mode: "0600"
