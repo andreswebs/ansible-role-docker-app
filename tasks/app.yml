@@ -1,5 +1,5 @@
 ---
-- name: "Create {{ app_name }} group"
+- name: "app | Create {{ app_name }} group"
   ansible.builtin.group:
     state: present
     gid: "{{ app_gid }}"
@@ -8,15 +8,15 @@
     - app
     - app-user
 
-- name: "Create {{ app_name }} user"
+- name: "app | Create {{ app_name }} user"
   ansible.builtin.user:
     state: present
     uid: "{{ app_uid }}"
     name: "{{ app_user }}"
     group: "{{ app_group }}"
     groups: docker
-    append: yes
-    create_home: no
+    append: true
+    create_home: false
     home: "{{ app_home }}"
     shell: "{{ app_user_shell }}"
     password: "*"
@@ -24,31 +24,31 @@
     - app
     - app-user
 
-- name: "Create {{ app_home }}"
+- name: "app | Create {{ app_home }}"
   ansible.builtin.file:
     state: directory
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     dest: "{{ app_home }}"
     mode: "0750"
-    recurse: yes
+    recurse: true
   tags:
     - app
     - app-user
 
-- name: "Ensure {{ app_dest }}"
+- name: "app | Ensure {{ app_dest }}"
   ansible.builtin.file:
     state: directory
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     dest: "{{ app_dest }}"
     mode: "0750"
-    recurse: yes
+    recurse: true
   tags:
     - app
     - app-user
 
-- name: "Install {{ app_name }} to {{ app_dest }}"
+- name: "app | Install {{ app_name }} to {{ app_dest }}"
   ansible.builtin.copy:
     src: "{{ app_src }}"
     dest: "{{ app_dest }}"
@@ -56,12 +56,12 @@
     group: "{{ app_group }}"
     mode: "0750"
   notify:
-    - restart app
+    - Restart app
   tags:
     - app
     - app-install
 
-- name: "Install {{ app_name }} service"
+- name: "app | Install {{ app_name }} service"
   ansible.builtin.template:
     src: docker-app.service.j2
     dest: "/etc/systemd/system/{{ app_name }}.service"
@@ -73,11 +73,11 @@
     - app-install
     - app-service
 
-- name: "Start and enable {{ app_name }} service"
+- name: "app | Start and enable {{ app_name }} service"
   ansible.builtin.service:
     name: "{{ app_name }}.service"
     state: started
-    enabled: yes
+    enabled: true
   tags:
     - app
     - app-install

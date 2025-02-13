@@ -1,0 +1,4 @@
+tasks/app.yml name[template]
+tasks/main.yml name[missing]
+tests/test.yml name[play]
+tests/test.yml syntax-check[specific]
