@@ -1,5 +1,5 @@
 ---
-- name: restart app
+- name: Restart app
   ansible.builtin.service:
     name: "{{ app_name }}"
     state: restarted
