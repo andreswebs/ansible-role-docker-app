@@ -21,6 +21,7 @@
     home: "{{ app_home }}"
     shell: "{{ app_user_shell }}"
     password: "*"
+    non_unique: "{{ app_user_overwrite }}"
   tags:
     - app
     - app-user

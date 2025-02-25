@@ -5,6 +5,7 @@ app_dest: "/opt/{{ app_name }}"
 app_uid: 2000
 app_gid: 2000
 app_user: "{{ app_name }}"
+app_user_overwrite: true
 app_group: "{{ app_name }}"
 app_group_overwrite: true
 app_user_shell: /sbin/nologin
