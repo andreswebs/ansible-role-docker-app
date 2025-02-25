@@ -8,4 +8,4 @@ app_user: "{{ app_name }}"
 app_user_overwrite: false
 app_group: "{{ app_name }}"
 app_group_overwrite: false
-app_user_shell: /sbin/nologin
+app_user_shell: /bin/bash
