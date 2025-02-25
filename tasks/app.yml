@@ -4,6 +4,7 @@
     state: present
     gid: "{{ app_gid }}"
     name: "{{ app_group }}"
+    non_unique: "{{ app_group_overwrite }}"
   tags:
     - app
     - app-user
