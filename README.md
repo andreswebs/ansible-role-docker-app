@@ -32,4 +32,4 @@ Installs a Docker Compose app as a systemd service.
 
 ## License
 
-[Unlicense](UNLICENSE.md)
+[Unlicense](UNLICENSE)
