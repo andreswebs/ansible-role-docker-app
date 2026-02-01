@@ -80,7 +80,7 @@
     name: "{{ app_name }}.service"
     state: started
     enabled: true
-    when: app_enable | default(false) | bool
+  when: app_enable | default(false) | bool
   tags:
     - app
     - app-install
