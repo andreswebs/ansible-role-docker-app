@@ -3,3 +3,4 @@
   ansible.builtin.service:
     name: "{{ app_name }}"
     state: restarted
+  when: app_enable | default(false) | bool
