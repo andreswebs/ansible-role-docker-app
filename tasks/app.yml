@@ -17,7 +17,7 @@
     group: "{{ app_group }}"
     groups: docker
     append: true
-    create_home: false
+    create_home: "{{ not app_home_decouple }}"
     home: "{{ app_home }}"
     shell: "{{ app_user_shell }}"
     password: "*"
@@ -34,6 +34,7 @@
     dest: "{{ app_home }}"
     mode: "0750"
     recurse: true
+  when: app_home_decouple | default(true) | bool
   tags:
     - app
     - app-user
@@ -72,7 +73,6 @@
     mode: "0600"
   tags:
     - app
-    - app-install
     - app-service
 
 - name: "app | Start and enable {{ app_name }} service"
@@ -83,5 +83,4 @@
   when: app_enable | default(false) | bool
   tags:
     - app
-    - app-install
     - app-service

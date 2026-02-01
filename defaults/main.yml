@@ -9,3 +9,4 @@ app_user_overwrite: false
 app_group: "{{ app_name }}"
 app_group_overwrite: false
 app_user_shell: /bin/bash
+app_home_decouple: true
