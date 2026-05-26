@@ -6,9 +6,11 @@ After=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+User={{ app_user }}
+Group={{ app_group }}
 WorkingDirectory={{ app_dest }}
-ExecStart=/usr/bin/docker compose up --detach
-ExecStop=/usr/bin/docker compose down
+ExecStart={{ docker_bin }} compose up --detach
+ExecStop={{ docker_bin }} compose down
 TimeoutStartSec=0
 
 [Install]

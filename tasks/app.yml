@@ -1,4 +1,15 @@
 ---
+- name: app | Validate required variables
+  ansible.builtin.assert:
+    that:
+      - app_src is defined and app_src | length > 0
+      - app_name is match('^[a-z0-9][a-z0-9._-]*$')
+    fail_msg: >-
+      'app_src' must be set and 'app_name' must match ^[a-z0-9][a-z0-9._-]*$
+      (got app_name={{ app_name | default('<unset>') }}).
+  tags:
+    - app
+
 - name: "app | Create {{ app_name }} group"
   ansible.builtin.group:
     state: present
@@ -33,7 +44,6 @@
     group: "{{ app_group }}"
     dest: "{{ app_home }}"
     mode: "0750"
-    recurse: true
   when: app_home_decouple | default(true) | bool
   tags:
     - app
@@ -46,7 +56,6 @@
     group: "{{ app_group }}"
     dest: "{{ app_dest }}"
     mode: "0750"
-    recurse: true
   tags:
     - app
     - app-user
@@ -70,17 +79,26 @@
     dest: "/etc/systemd/system/{{ app_name }}.service"
     owner: root
     group: root
-    mode: "0600"
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart app
   tags:
     - app
     - app-service
 
-- name: "app | Start and enable {{ app_name }} service"
+- name: app | Flush handlers before starting service
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - app
+    - app-service
+
+- name: "app | Manage {{ app_name }} service"
   ansible.builtin.service:
     name: "{{ app_name }}.service"
-    state: started
-    enabled: true
-  when: app_enable | default(false) | bool
+    state: "{{ 'started' if app_started | bool else 'stopped' }}"
+    enabled: "{{ app_enabled | bool }}"
+  when: app_started | bool or app_enabled | bool
   tags:
     - app
     - app-service

@@ -1,6 +1,18 @@
 ---
-- name: Restart app
-  ansible.builtin.service:
-    name: "{{ app_name }}"
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Get app service state
+  ansible.builtin.systemd:
+    name: "{{ app_name }}.service"
+  register: app_service_state
+  changed_when: false
+  listen: Restart app
+
+- name: Restart app if running
+  ansible.builtin.systemd:
+    name: "{{ app_name }}.service"
     state: restarted
-  when: app_enable | default(false) | bool
+  when: app_service_state.status.ActiveState == 'active'
+  listen: Restart app

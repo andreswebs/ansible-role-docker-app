@@ -10,3 +10,6 @@ app_group: "{{ app_name }}"
 app_group_overwrite: false
 app_user_shell: /bin/bash
 app_home_decouple: true
+app_started: true
+app_enabled: true
+docker_bin: /usr/bin/docker

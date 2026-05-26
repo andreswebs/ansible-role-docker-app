@@ -1,0 +1,9 @@
+---
+roles:
+  - name: andreswebs.docker
+    src: https://github.com/andreswebs/ansible-role-docker.git
+    scm: git
+    version: main
+
+collections:
+  - name: community.docker

@@ -1,2 +1,3 @@
 ---
-- ansible.builtin.import_tasks: app.yml
+- name: app | Import app tasks
+  ansible.builtin.import_tasks: app.yml
