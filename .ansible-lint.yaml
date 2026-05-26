@@ -8,6 +8,10 @@ var_naming_pattern: "^[a-z_][a-z0-9_]*$"
 
 use_default_rules: true
 
+mock_roles:
+  - docker-app
+  - andreswebs.docker
+
 enable_list:
   - args
   - empty-string-compare

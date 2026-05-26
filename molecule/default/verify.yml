@@ -1,0 +1,53 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    app_name: hello-app
+    app_user: hello-app
+    app_group: hello-app
+    app_dest: /opt/hello-app
+  tasks:
+    - name: Look up app user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ app_user }}"
+
+    - name: Look up groups for app user
+      ansible.builtin.command: id -nG {{ app_user }}
+      register: app_user_groups
+      changed_when: false
+
+    - name: Assert user is in docker group
+      ansible.builtin.assert:
+        that:
+          - "'docker' in app_user_groups.stdout.split()"
+
+    - name: Stat the systemd unit
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ app_name }}.service"
+      register: unit_stat
+
+    - name: Assert unit file exists with mode 0644
+      ansible.builtin.assert:
+        that:
+          - unit_stat.stat.exists
+          - unit_stat.stat.mode == '0644'
+
+    - name: Validate the unit with systemd-analyze
+      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/{{ app_name }}.service
+      register: sd_verify
+      changed_when: false
+      failed_when: sd_verify.rc != 0
+
+    - name: Stat the deployed compose file
+      ansible.builtin.stat:
+        path: "{{ app_dest }}/docker-compose.yml"
+      register: compose_stat
+
+    - name: Assert compose file deployed
+      ansible.builtin.assert:
+        that:
+          - compose_stat.stat.exists
+          - compose_stat.stat.pw_name == app_user
+          - compose_stat.stat.gr_name == app_group

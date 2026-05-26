@@ -1,0 +1,12 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    app_name: hello-app
+    app_src: "{{ playbook_dir }}/files/docker-compose.yml"
+    app_dest: /opt/hello-app
+    app_started: false
+    app_enabled: false
+  roles:
+    - role: docker-app
