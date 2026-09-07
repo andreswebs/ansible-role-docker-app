@@ -12,4 +12,17 @@ app_user_shell: /bin/bash
 app_home_decouple: true
 app_started: true
 app_enabled: true
+## Overrides the compose-file probe for a directory 'app_src' whose compose file
+## is not one of the names Compose itself recognises. Ignored for a file
+## 'app_src', which is always installed as compose.yaml.
+app_compose_file: ""
+## Rendered to 'app_env_file' when non-empty and passed to Compose as
+## --env-file. Expected to arrive from vaulted group_vars/host_vars.
+app_env: {}
+app_env_file: "{{ app_dest }}/.env"
+## Unit names added to both Requires= and After=, for a stack that references
+## another stack's resources by name (e.g. an external network).
+app_requires: []
+app_stop_timeout: 120s
+app_validate: true
 docker_bin: /usr/bin/docker

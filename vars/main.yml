@@ -1,0 +1,10 @@
+---
+## The filenames Compose itself recognises by default, most-preferred first.
+## See https://docs.docker.com/reference/compose-file/. Not a tunable: a name
+## outside this set needs 'app_compose_file' instead, so the unit's --file
+## argument stays explicit either way.
+app_compose_names:
+  - compose.yaml
+  - compose.yml
+  - docker-compose.yaml
+  - docker-compose.yml

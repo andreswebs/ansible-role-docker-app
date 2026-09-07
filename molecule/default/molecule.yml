@@ -10,6 +10,11 @@ dependency:
 driver:
   name: docker
 
+## The scenario starts real containers, not just the docker packages, so the
+## inner daemon's storage has to be on a real filesystem. Left on the
+## container's own overlayfs, containerd fails every image mount with
+## "fstype: overlay ... invalid argument" - overlay cannot stack on overlay.
+## Anonymous volumes for /var/lib/docker and /var/lib/containerd give it ext4.
 platforms:
   - name: docker-app-ubuntu-2404
     image: geerlingguy/docker-ubuntu2404-ansible:latest
@@ -18,6 +23,8 @@ platforms:
     cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - /var/lib/docker
+      - /var/lib/containerd
     command: /lib/systemd/systemd
   - name: docker-app-debian-13
     image: geerlingguy/docker-debian13-ansible:latest
@@ -26,6 +33,8 @@ platforms:
     cgroupns_mode: host
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - /var/lib/docker
+      - /var/lib/containerd
     command: /lib/systemd/systemd
 
 provisioner:

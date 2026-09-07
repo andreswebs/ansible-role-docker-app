@@ -2,11 +2,67 @@
 - name: Converge
   hosts: all
   become: true
-  vars:
-    app_name: hello-app
-    app_src: "{{ playbook_dir }}/files/docker-compose.yml"
-    app_dest: /opt/hello-app
-    app_started: false
-    app_enabled: false
-  roles:
-    - role: docker-app
+  tasks:
+    ## Pulled in explicitly rather than left to the role's meta dependency, so
+    ## the fixture image can be fetched before the first stack starts.
+    - name: Install Docker
+      ansible.builtin.include_role:
+        name: andreswebs.docker
+
+    ## The first stack starts during converge, so this is the scenario's first
+    ## registry pull. Anonymous Docker Hub limits in CI are a real flake
+    ## source; retry rather than fail the whole run on one 429.
+    - name: Pre-pull the fixture image
+      ansible.builtin.command:
+        cmd: docker pull busybox:latest
+      register: fixture_pull
+      retries: 5
+      delay: 10
+      until: fixture_pull is succeeded
+      changed_when: false
+
+    ## Directory app_src, trailing slash. The running case: project name, env
+    ## file, bundled config, and reload are all asserted against this one.
+    - name: Deploy the running stack
+      ansible.builtin.include_role:
+        name: docker-app
+      vars:
+        app_name: run-app
+        app_src: "{{ playbook_dir }}/files/stack/"
+        app_dest: /opt/run-app
+        ## Distinct per stack: app_uid/app_gid default to 2000, so three apps
+        ## on one host collide on the second groupadd.
+        app_uid: 2001
+        app_gid: 2001
+        app_env:
+          MARKER: hello-from-envfile
+        app_started: true
+        app_enabled: true
+
+    ## Same directory, no trailing slash. Regression test for the nesting bug:
+    ## without normalization the compose file lands in /opt/nodash-app/stack.
+    - name: Deploy the same stack with an unslashed app_src
+      ansible.builtin.include_role:
+        name: docker-app
+      vars:
+        app_name: nodash-app
+        app_src: "{{ playbook_dir }}/files/stack"
+        app_dest: /opt/nodash-app
+        app_uid: 2002
+        app_gid: 2002
+        app_started: false
+        app_enabled: false
+
+    ## File app_src, install-only. Covers the compose.yaml rename, the
+    ## --project-directory redirect, and the "don't touch runtime" contract.
+    - name: Deploy a staged file-mode stack
+      ansible.builtin.include_role:
+        name: docker-app
+      vars:
+        app_name: staged-app
+        app_src: "{{ playbook_dir }}/files/docker-compose.yml"
+        app_dest: /opt/staged-app
+        app_uid: 2003
+        app_gid: 2003
+        app_started: false
+        app_enabled: false

@@ -2,11 +2,74 @@
 - name: app | Validate required variables
   ansible.builtin.assert:
     that:
-      - app_src is defined and app_src | length > 0
-      - app_name is match('^[a-z0-9][a-z0-9._-]*$')
+      - app_src | default('') | length > 0
+      - app_src | default('') is abs
+      - app_src | default('') is exists
+      - app_name is match('^[a-z0-9][a-z0-9_-]*$')
     fail_msg: >-
-      'app_src' must be set and 'app_name' must match ^[a-z0-9][a-z0-9._-]*$
-      (got app_name={{ app_name | default('<unset>') }}).
+      'app_src' must be an absolute path that exists on the controller (got
+      app_src={{ app_src | default('<unset>') }}), and 'app_name' must match
+      ^[a-z0-9][a-z0-9_-]*$ (got app_name={{ app_name | default('<unset>') }}).
+      'app_name' becomes the Compose project name, which Compose rejects unless
+      it is lowercase alphanumeric, hyphens and underscores only.
+  tags:
+    - app
+
+## Registered handler results are host facts and outlive the role, so a play
+## that applies this role more than once would otherwise let the first app's
+## restart suppress the second app's reload.
+- name: app | Reset handler state
+  ansible.builtin.set_fact:
+    app_restart: {}
+  tags:
+    - app
+
+## 'is directory' resolves controller-side against the ansible process cwd,
+## while 'copy' resolves a relative src against files/ then the playbook dir.
+## Requiring an absolute app_src above is what makes this classification
+## trustworthy; it decides the copy destination, the compose-file resolution,
+## and whether the unit gets --project-directory.
+- name: app | Classify app_src
+  ansible.builtin.set_fact:
+    app_src_is_dir: "{{ app_src is directory }}"
+  tags:
+    - app
+
+## 'copy' without a trailing slash copies the directory *itself* into dest, so
+## the compose file lands one level below WorkingDirectory and the unit finds
+## nothing. Normalising here means both documented call shapes behave.
+- name: app | Normalize app_src
+  ansible.builtin.set_fact:
+    app_src_resolved: >-
+      {{ (app_src | regex_replace('/+$', '')) ~ '/' if app_src_is_dir | bool else app_src }}
+  tags:
+    - app
+
+- name: app | Stat the docker binary
+  ansible.builtin.stat:
+    path: "{{ docker_bin }}"
+  register: app_docker_bin
+  tags:
+    - app
+
+- name: app | Assert the docker binary is usable
+  ansible.builtin.assert:
+    that:
+      - app_docker_bin.stat.exists
+      - app_docker_bin.stat.executable | default(false)
+    fail_msg: >-
+      'docker_bin' ({{ docker_bin }}) is not an executable on this host. The
+      path is baked into the systemd unit, so a wrong value fails at unit start
+      rather than here.
+  tags:
+    - app
+
+## 'docker' existing does not imply the compose plugin is installed, and the
+## unit's whole argv is a compose invocation.
+- name: app | Verify the docker compose plugin responds
+  ansible.builtin.command:
+    cmd: "{{ docker_bin }} compose version"
+  changed_when: false
   tags:
     - app
 
@@ -60,15 +123,103 @@
     - app
     - app-user
 
+## The env file is rendered into app_dest, which for a directory app_src is
+## also where the copy lands - so a source tree shipping its own .env would be
+## silently overwritten. Fail instead of picking a winner.
+- name: app | Assert app_src does not ship its own .env
+  ansible.builtin.assert:
+    that:
+      - not ((app_src_resolved ~ '.env') is exists)
+    fail_msg: >-
+      'app_env' is set, but 'app_src' ({{ app_src }}) already contains a .env
+      that would be overwritten at {{ app_env_file }}. Move those values into
+      'app_env' or drop the file.
+  when:
+    - app_env | length > 0
+    - app_src_is_dir | bool
+  tags:
+    - app
+    - app-install
+
+## A file app_src is installed as compose.yaml regardless of its source name,
+## so the unit's --file argument is predictable. A directory app_src is copied
+## verbatim - its tree may hold config the compose file references relatively.
 - name: "app | Install {{ app_name }} to {{ app_dest }}"
   ansible.builtin.copy:
-    src: "{{ app_src }}"
-    dest: "{{ app_dest }}"
+    src: "{{ app_src_resolved }}"
+    dest: "{{ app_dest if app_src_is_dir | bool else app_dest ~ '/compose.yaml' }}"
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     mode: "0750"
   notify:
-    - Restart app
+    - Reload app
+  tags:
+    - app
+    - app-install
+
+- name: app | Probe for the deployed compose file
+  ansible.builtin.stat:
+    path: "{{ app_dest }}/{{ item }}"
+  register: app_compose_probe
+  loop: "{{ [app_compose_file] if app_compose_file | length > 0 else app_compose_names }}"
+  when: app_src_is_dir | bool
+  tags:
+    - app
+    - app-install
+
+- name: app | Resolve the compose file name
+  ansible.builtin.set_fact:
+    app_compose_name: >-
+      {{ 'compose.yaml' if not app_src_is_dir | bool
+         else (app_compose_probe.results
+               | selectattr('stat.exists', 'defined')
+               | selectattr('stat.exists')
+               | map(attribute='item') | first | default('')) }}
+  tags:
+    - app
+    - app-install
+
+## Catches the classic app_src mistake (a directory copied one level too deep)
+## at deploy time, with the source named, rather than at unit start.
+- name: app | Assert the compose file resolved
+  ansible.builtin.assert:
+    that:
+      - app_compose_name | length > 0
+    fail_msg: >-
+      No compose file at {{ app_dest }}. 'app_src' ({{ app_src }}) must contain
+      one of {{ app_compose_names | join(', ') }} at its root, or set
+      'app_compose_file'. A directory 'app_src' is copied as its *contents*; if
+      the compose file landed in a subdirectory instead, the path is wrong.
+  tags:
+    - app
+    - app-install
+
+- name: "app | Render {{ app_name }} env file"
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_env_file }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0400"
+  no_log: true
+  when: app_env | length > 0
+  notify:
+    - Reload app
+  tags:
+    - app
+    - app-install
+
+## --no-interpolate because values can reference secrets that are not
+## resolvable here. Catches a malformed stack before the unit is written,
+## rather than as an ExecStart failure in the journal.
+- name: "app | Validate the {{ app_name }} compose payload"
+  ansible.builtin.command:
+    cmd: >-
+      {{ docker_bin }} compose --file {{ app_dest }}/{{ app_compose_name }}
+      config --no-interpolate --quiet
+    chdir: "{{ app_dest }}"
+  changed_when: false
+  when: app_validate | bool
   tags:
     - app
     - app-install

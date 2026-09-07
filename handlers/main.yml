@@ -3,16 +3,35 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
+## Both chains share this probe: neither restart nor reload may touch a service
+## the role was told not to manage, and `systemctl reload` on an inactive unit
+## fails outright.
 - name: Get app service state
   ansible.builtin.systemd:
     name: "{{ app_name }}.service"
   register: app_service_state
   changed_when: false
-  listen: Restart app
+  listen:
+    - Restart app
+    - Reload app
 
+## Defined before the reload handler on purpose: Ansible runs handlers in
+## definition order, not notification order, so a run that changed both the
+## unit file and the compose payload restarts once instead of reloading and
+## then restarting.
 - name: Restart app if running
   ansible.builtin.systemd:
     name: "{{ app_name }}.service"
     state: restarted
   when: app_service_state.status.ActiveState == 'active'
+  register: app_restart
   listen: Restart app
+
+- name: Reload app if running
+  ansible.builtin.systemd:
+    name: "{{ app_name }}.service"
+    state: reloaded
+  when:
+    - app_service_state.status.ActiveState == 'active'
+    - not (app_restart.changed | default(false))
+  listen: Reload app

@@ -1,5 +1,8 @@
 ---
+## File-mode fixture. The source name differs from compose.yaml on purpose: the
+## role must install it under the normalized name regardless.
 services:
-  hello:
-    image: hello-world
+  staged:
+    image: busybox:latest
+    command: ["sh", "-c", "sleep 86400"]
     restart: "no"

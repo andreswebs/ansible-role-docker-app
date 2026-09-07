@@ -1,0 +1,18 @@
+---
+## Deliberately *not* named compose.yaml: the directory mode must find a
+## lower-preference name through the probe, not by accident.
+services:
+  marker:
+    image: busybox:latest
+    ## $$ escapes Compose interpolation so the shell expands MARKER at runtime,
+    ## proving the --env-file reached the container. Long-running, so the
+    ## project stays visible to `docker ps` and the reload can be observed.
+    command: ["sh", "-c", "cat /conf/marker.txt > /out/config && printf '%s' \"$$MARKER\" > /out/marker && sleep 86400"]
+    environment:
+      MARKER: "${MARKER:-unset}"
+    ## Relative bind sources: with no --project-directory these resolve against
+    ## app_dest, which is what the directory mode must do.
+    volumes:
+      - ./config:/conf:ro
+      - ./out:/out
+    restart: "no"

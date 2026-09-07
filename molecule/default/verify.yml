@@ -3,18 +3,19 @@
   hosts: all
   become: true
   vars:
-    app_name: hello-app
-    app_user: hello-app
-    app_group: hello-app
-    app_dest: /opt/hello-app
+    app_names:
+      - run-app
+      - nodash-app
+      - staged-app
   tasks:
-    - name: Look up app user
+    - name: Look up app users
       ansible.builtin.getent:
         database: passwd
-        key: "{{ app_user }}"
+        key: "{{ item }}"
+      loop: "{{ app_names }}"
 
-    - name: Look up groups for app user
-      ansible.builtin.command: id -nG {{ app_user }}
+    - name: Look up groups for the running app user
+      ansible.builtin.command: id -nG run-app
       register: app_user_groups
       changed_when: false
 
@@ -23,31 +24,216 @@
         that:
           - "'docker' in app_user_groups.stdout.split()"
 
-    - name: Stat the systemd unit
+    - name: Stat the systemd units
       ansible.builtin.stat:
-        path: "/etc/systemd/system/{{ app_name }}.service"
+        path: "/etc/systemd/system/{{ item }}.service"
       register: unit_stat
+      loop: "{{ app_names }}"
 
-    - name: Assert unit file exists with mode 0644
+    - name: Assert unit files exist with mode 0644
       ansible.builtin.assert:
         that:
-          - unit_stat.stat.exists
-          - unit_stat.stat.mode == '0644'
+          - item.stat.exists
+          - item.stat.mode == '0644'
+      loop: "{{ unit_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
-    - name: Validate the unit with systemd-analyze
-      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/{{ app_name }}.service
+    - name: Validate the units with systemd-analyze
+      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/{{ item }}.service
       register: sd_verify
       changed_when: false
       failed_when: sd_verify.rc != 0
+      loop: "{{ app_names }}"
 
-    - name: Stat the deployed compose file
+    - name: Read the rendered units
+      ansible.builtin.slurp:
+        src: "/etc/systemd/system/{{ item }}.service"
+      register: unit_content
+      loop:
+        - run-app
+        - staged-app
+
+    - name: Keep the rendered units to hand
+      ansible.builtin.set_fact:
+        unit_run: "{{ unit_content.results[0].content | b64decode }}"
+        unit_staged: "{{ unit_content.results[1].content | b64decode }}"
+
+    # Directory mode: verbatim tree copy, lower-preference compose name found
+    # by the probe, no --project-directory.
+
+    - name: Stat the directory-mode payload
       ansible.builtin.stat:
-        path: "{{ app_dest }}/docker-compose.yml"
-      register: compose_stat
+        path: "{{ item }}"
+      register: dir_payload
+      loop:
+        - /opt/run-app/docker-compose.yml
+        - /opt/run-app/config/marker.txt
+        - /opt/nodash-app/docker-compose.yml
 
-    - name: Assert compose file deployed
+    - name: Assert the directory payload landed at the app_dest root
       ansible.builtin.assert:
         that:
-          - compose_stat.stat.exists
-          - compose_stat.stat.pw_name == app_user
-          - compose_stat.stat.gr_name == app_group
+          - item.stat.exists
+          - item.stat.pw_name == item.item.split('/')[2]
+      loop: "{{ dir_payload.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    ## The nesting bug this replaces: an unslashed app_src copies the directory
+    ## itself, landing the compose file at /opt/nodash-app/stack/.
+    - name: Stat the path an unnormalized app_src would have created
+      ansible.builtin.stat:
+        path: /opt/nodash-app/stack
+      register: nested_payload
+
+    - name: Assert app_src was normalized, not nested
+      ansible.builtin.assert:
+        that:
+          - not nested_payload.stat.exists
+
+    - name: Assert the directory-mode unit argv
+      ansible.builtin.assert:
+        that:
+          - "'--project-name run-app' in unit_run"
+          - "'--file /opt/run-app/docker-compose.yml' in unit_run"
+          - "'--env-file /opt/run-app/.env' in unit_run"
+          - "'--project-directory' not in unit_run"
+          - "'up --detach --remove-orphans' in unit_run"
+          - "'TimeoutStartSec=infinity' in unit_run"
+          - "'TimeoutStopSec=120s' in unit_run"
+          - "'Requires=docker.service network-online.target' in unit_run"
+          - "'After=docker.service docker.socket network-online.target' in unit_run"
+          - "'Environment=STATE_DIRECTORY=/var/lib/run-app' in unit_run"
+
+    # File mode: renamed to compose.yaml, relative binds redirected to app_home.
+
+    - name: Stat the file-mode payload
+      ansible.builtin.stat:
+        path: /opt/staged-app/compose.yaml
+      register: staged_payload
+
+    - name: Assert the file-mode payload was installed under the normalized name
+      ansible.builtin.assert:
+        that:
+          - staged_payload.stat.exists
+          - staged_payload.stat.pw_name == 'staged-app'
+
+    - name: Assert the file-mode unit argv
+      ansible.builtin.assert:
+        that:
+          - "'--file /opt/staged-app/compose.yaml' in unit_staged"
+          - "'--project-directory /var/lib/staged-app' in unit_staged"
+          - "'--env-file' not in unit_staged"
+
+    - name: Get the staged service state
+      ansible.builtin.systemd:
+        name: staged-app.service
+      register: staged_state
+      changed_when: false
+
+    - name: Assert install-only mode left the service alone
+      ansible.builtin.assert:
+        that:
+          - staged_state.status.ActiveState != 'active'
+
+    # Env file.
+
+    - name: Stat the env file
+      ansible.builtin.stat:
+        path: /opt/run-app/.env
+      register: env_stat
+
+    - name: Assert the env file is app-owned and unreadable to others
+      ansible.builtin.assert:
+        that:
+          - env_stat.stat.exists
+          - env_stat.stat.mode == '0400'
+          - env_stat.stat.pw_name == 'run-app'
+
+    # Runtime: the project name, the env file, and the bundled config all have
+    # to be observed on a running container, not inferred from the unit file.
+
+    - name: Get the running service state
+      ansible.builtin.systemd:
+        name: run-app.service
+      register: run_state
+      changed_when: false
+
+    - name: Assert the running service is active
+      ansible.builtin.assert:
+        that:
+          - run_state.status.ActiveState == 'active'
+
+    ## Label filter rather than `docker compose ps`, so the assertion is immune
+    ## to the role's own argv shape - it only asks what project the running
+    ## container belongs to.
+    - name: Find the running container by compose project label
+      ansible.builtin.command: >-
+        docker ps -q --filter label=com.docker.compose.project=run-app
+        --filter label=com.docker.compose.service=marker
+      register: container_before
+      changed_when: false
+
+    - name: Assert the stack runs under app_name, not the app_dest basename
+      ansible.builtin.assert:
+        that:
+          - container_before.stdout | length > 0
+        fail_msg: >-
+          No container labelled with project run-app. Without --project-name
+          the project would be named after the app_dest basename instead.
+
+    - name: Wait for the container to write its markers
+      ansible.builtin.wait_for:
+        path: /opt/run-app/out/marker
+        timeout: 60
+
+    - name: Read the markers written by the container
+      ansible.builtin.slurp:
+        src: "/opt/run-app/out/{{ item }}"
+      register: markers
+      loop:
+        - marker
+        - config
+
+    - name: Assert the env file reached the container and the bundle was copied
+      ansible.builtin.assert:
+        that:
+          - (markers.results[0].content | b64decode) == 'hello-from-envfile'
+          - (markers.results[1].content | b64decode).strip() == 'bundled-config-copied'
+
+    ## Directory mode must keep the default project directory, so the relative
+    ## bind resolves against app_dest and not app_home.
+    - name: Assert the relative bind resolved against app_dest
+      ansible.builtin.stat:
+        path: /var/lib/run-app/out
+      register: state_out
+
+    - name: Assert app_home was not used as the project directory
+      ansible.builtin.assert:
+        that:
+          - not state_out.stat.exists
+
+    # Reload must reconcile in place. A restart would run ExecStop first and
+    # replace the container, which is the whole point of ExecReload.
+
+    - name: Reload the running service
+      ansible.builtin.systemd:
+        name: run-app.service
+        state: reloaded
+
+    - name: Find the container again after reload
+      ansible.builtin.command: >-
+        docker ps -q --filter label=com.docker.compose.project=run-app
+        --filter label=com.docker.compose.service=marker
+      register: container_after
+      changed_when: false
+
+    - name: Assert reload did not recreate the container
+      ansible.builtin.assert:
+        that:
+          - container_after.stdout == container_before.stdout
+        fail_msg: >-
+          The container was recreated by reload
+          ({{ container_before.stdout }} -> {{ container_after.stdout }});
+          ExecReload should reconcile in place, not tear the stack down.

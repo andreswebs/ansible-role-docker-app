@@ -1,7 +1,31 @@
+{#
+Argv order matches modules/docker-compose-app in the nixos-fleet repo, so both
+implementations address the same project with the same flags. --project-name,
+--file, --env-file and --project-directory are *global* flags and must precede
+the subcommand; --remove-orphans belongs to `up`.
+#}
+{% set compose_argv = [docker_bin, 'compose', '--project-name', app_name, '--file', app_dest ~ '/' ~ app_compose_name] %}
+{% if app_env | length > 0 %}
+{% set compose_argv = compose_argv + ['--env-file', app_env_file] %}
+{% endif %}
+{#
+A file app_src is a bare compose file with nowhere to keep state, so relative
+bind sources are redirected into app_home. A directory app_src keeps the
+default project directory: its whole point is bundling config next to the
+compose file, and those references have to keep resolving against app_dest.
+#}
+{% if not app_src_is_dir | bool %}
+{% set compose_argv = compose_argv + ['--project-directory', app_home] %}
+{% endif %}
+{% set compose = compose_argv | join(' ') %}
 [Unit]
 Description={{ app_name }} (Docker Compose app)
-Requires=docker.service
-After=docker.service
+{# Requires, not Wants: `compose up` against a dead daemon fails the unit
+   rather than waiting, and a oneshot that failed at boot never retries.
+   docker.socket is ordering only - requiring both it and docker.service is
+   redundant. #}
+Requires={{ (['docker.service', 'network-online.target'] + app_requires) | join(' ') }}
+After={{ (['docker.service', 'docker.socket', 'network-online.target'] + app_requires) | join(' ') }}
 
 [Service]
 Type=oneshot
@@ -9,9 +33,23 @@ RemainAfterExit=yes
 User={{ app_user }}
 Group={{ app_group }}
 WorkingDirectory={{ app_dest }}
-ExecStart={{ docker_bin }} compose up --detach
-ExecStop={{ docker_bin }} compose down
-TimeoutStartSec=0
+{# The Nix module declares StateDirectory=, which always exports this. Setting
+   it by hand gives compose files the same handle, so a stack can move between
+   the two implementations unchanged. #}
+Environment=STATE_DIRECTORY={{ app_home }}
+ExecStart={{ compose }} up --detach --remove-orphans
+ExecStop={{ compose }} down
+{# Reconciling the stack *is* the reload action, so this is deliberately the
+   same argv as ExecStart. `systemctl restart` on a RemainAfterExit oneshot
+   runs ExecStop first, costing whole-stack downtime for a one-line YAML edit;
+   reload recreates only what changed. #}
+ExecReload={{ compose }} up --detach --remove-orphans
+{# A first activation pulling a large image can exceed any bound worth
+   picking, so don't impose one. Compose's teardown, on the other hand, waits
+   out each container's stop grace period, and the systemd default 90s can fire
+   mid-teardown and leave half the stack up. #}
+TimeoutStartSec=infinity
+TimeoutStopSec={{ app_stop_timeout }}
 
 [Install]
 WantedBy=multi-user.target
